@@ -1,10 +1,8 @@
-import dotenv from 'dotenv';
-import app from './app.js';
+require('dotenv').config();
+const app = require('./app');
 
-dotenv.config();
+const PORT = process.env.PORT || 3000;
 
-const port = process.env.PORT || 3000;
-
-app.listen(port, () => {
-  console.log(`MediLink API listening on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
 });

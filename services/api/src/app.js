@@ -1,29 +1,28 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const authRoutes = require('./modules/auth/auth.routes');
+const authMiddleware = require('./middleware/auth');
 
 const app = express();
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+app.use(express.json());
 
-app.get('/health', (_req, res) => {
-  res.json({ success: true, service: 'medilink-api' });
+app.get('/health', (req, res) => {
+  res.json({ success: true, message: 'MediLink API is running' });
 });
 
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({
-    success: false,
-    error: {
-      code: 'INTERNAL_SERVER_ERROR',
-      message: 'Unexpected server error'
-    }
+app.get('/api/me', authMiddleware, (req, res) => {
+  res.json({
+    success: true,
+    user: req.user,
   });
 });
 
-export default app;
+app.use('/api/auth', authRoutes);
+
+module.exports = app;
