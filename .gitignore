@@ -1,0 +1,44 @@
+# macOS
+.DS_Store
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub/
+.pub-cache/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+**/android/.gradle/
+**/android/app/debug
+**/android/app/profile
+**/android/app/release
+**/ios/Pods/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Uploads
+uploads/
