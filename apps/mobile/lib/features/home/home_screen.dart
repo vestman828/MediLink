@@ -22,7 +22,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUser() async {
     final role = await Storage.getUserRole();
-    if (mounted) setState(() { _role = role; _loading = false; });
+    if (mounted) {
+      setState(() {
+        _role = role;
+        _loading = false;
+      });
+    }
   }
 
   @override

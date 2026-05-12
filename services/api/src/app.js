@@ -12,6 +12,9 @@ const intakeLogsRoutes = require('./modules/intake-logs/intake-logs.routes');
 const guardianRoutes = require('./modules/guardian/guardian.routes');
 const statisticsRoutes = require('./modules/statistics/statistics.routes');
 const familyMapRoutes = require('./modules/family-map/family-map.routes');
+const usersRoutes = require('./modules/users/users.routes');
+const dailyNotesRoutes = require('./modules/daily-notes/daily-notes.routes');
+const guardianAlertsRoutes = require('./modules/guardian-alerts/guardian-alerts.routes');
 
 const app = express();
 
@@ -37,5 +40,8 @@ app.use('/api/intake-logs', intakeLogsRoutes);
 app.use('/api/guardian', guardianRoutes);
 app.use('/api/statistics', statisticsRoutes);
 app.use('/api/family-map', familyMapRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api/daily-notes', dailyNotesRoutes);
+app.use('/api/guardian-alerts', guardianAlertsRoutes);
 
 module.exports = app;

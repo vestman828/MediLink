@@ -50,6 +50,8 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
 
   final _dayLabels = ['월', '화', '수', '목', '금', '토', '일'];
 
+  DateTime? _endDate;
+
   int? _userId;
   String? _token;
 
@@ -108,6 +110,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
         'medicine_id': _selectedMedicineId,
         'dose': _doseCtrl.text.trim(),
         'start_date': today,
+        if (_endDate != null) 'end_date': _endDate!.toIso8601String().substring(0, 10),
       }, token: _token);
       final pmId = pmRes['patient_medicine_id'] as int;
 
@@ -284,6 +287,55 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                   ),
                 );
               }).toList(),
+            ),
+
+            const SizedBox(height: 24),
+
+            // 복용 종료일 (선택)
+            _sectionTitle('복용 종료일 (선택)'),
+            GestureDetector(
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: _endDate ?? DateTime.now().add(const Duration(days: 30)),
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                  helpText: '복용 종료일 선택',
+                  confirmText: '확인',
+                  cancelText: '취소',
+                );
+                if (picked != null) setState(() => _endDate = picked);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.calendar_today_outlined,
+                        color: _endDate != null ? AppTheme.primary : AppTheme.textSecondary, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _endDate != null
+                            ? '${_endDate!.year}년 ${_endDate!.month}월 ${_endDate!.day}일까지'
+                            : '종료일 없음 (무기한)',
+                        style: TextStyle(
+                          color: _endDate != null ? Colors.black87 : AppTheme.textSecondary,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    if (_endDate != null)
+                      GestureDetector(
+                        onTap: () => setState(() => _endDate = null),
+                        child: const Icon(Icons.close, size: 18, color: AppTheme.textSecondary),
+                      ),
+                  ],
+                ),
+              ),
             ),
 
             const SizedBox(height: 36),

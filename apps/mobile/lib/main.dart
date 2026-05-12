@@ -5,6 +5,7 @@ import 'core/theme.dart';
 import 'core/notification_service.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/signup_screen.dart';
+import 'features/auth/profile_screen.dart';
 import 'features/home/home_screen.dart';
 
 void main() async {
@@ -30,6 +31,7 @@ class MediLinkApp extends StatelessWidget {
         '/login': (_) => const LoginScreen(),
         '/signup': (_) => const SignupScreen(),
         '/home': (_) => const HomeScreen(),
+        '/profile': (_) => const ProfileScreen(),
       },
     );
   }

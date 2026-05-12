@@ -51,7 +51,7 @@ class _GuardianStatsScreenState extends State<GuardianStatsScreen>
       final statsMap30 = <int, Map<String, dynamic>>{};
 
       for (final p in patients) {
-        final pid = p['user_id'] as int;
+        final pid = (p['patient_id'] ?? p['user_id']) as int;
         try {
           final r7 = await ApiClient.get('/statistics/adherence', token: _token,
               queryParams: {'patient_id': pid.toString(), 'period': '7'});
@@ -134,7 +134,7 @@ class _GuardianStatsScreenState extends State<GuardianStatsScreen>
   }
 
   Widget _buildPatientStats(dynamic patient, Map<int, Map<String, dynamic>> statsMap, int period) {
-    final pid = patient['user_id'] as int;
+    final pid = (patient['patient_id'] ?? patient['user_id']) as int;
     final stats = statsMap[pid] ?? {};
     final daily = stats['daily_adherence'] as List<dynamic>? ?? [];
     final weeklyPoints = (stats['weekly_points'] as num?)?.toInt() ?? 0;
@@ -274,33 +274,50 @@ class _GuardianStatsScreenState extends State<GuardianStatsScreen>
 
   // 30일 주별 바 차트 (4~5주)
   Widget _buildWeeklyBars(List<DateTime> days, Map<String, int> countMap, int maxCount) {
-    // 주별로 묶기
+    // 주별로 묶기 (월요일 기준) - 순서 보장을 위해 LinkedHashMap 대신 List 사용
+    final weekOrder = <String>[];
     final weekTotals = <String, int>{};
+    final weekStart = <String, DateTime>{};
+    final weekEnd = <String, DateTime>{};
+
     for (final day in days) {
       final monday = day.subtract(Duration(days: day.weekday - 1));
-      final weekKey = DateFormat('M/d').format(monday);
+      final sunday = monday.add(const Duration(days: 6));
+      final weekKey = '${monday.month}/${monday.day}';
+      if (!weekTotals.containsKey(weekKey)) {
+        weekOrder.add(weekKey);
+        weekStart[weekKey] = monday;
+        weekEnd[weekKey] = sunday;
+        weekTotals[weekKey] = 0;
+      }
       final dayKey = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
       weekTotals[weekKey] = (weekTotals[weekKey] ?? 0) + (countMap[dayKey] ?? 0);
     }
-    final weeks = weekTotals.keys.toList();
+
     final maxWeek = weekTotals.values.isEmpty ? 1 : weekTotals.values.reduce((a, b) => a > b ? a : b);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: weeks.map((w) {
+      children: weekOrder.map((w) {
         final count = weekTotals[w] ?? 0;
         final ratio = maxWeek > 0 ? count / maxWeek : 0.0;
+        final start = weekStart[w]!;
+        final end = weekEnd[w]!;
+        // "4/13~19" 또는 월이 바뀌면 "4/28~5/4"
+        final label = start.month == end.month
+            ? '${start.month}/${start.day}~${end.day}'
+            : '${start.month}/${start.day}~${end.month}/${end.day}';
         return Column(
           children: [
             Text('$count', style: TextStyle(fontSize: 10, color: count > 0 ? AppTheme.primary : AppTheme.textSecondary)),
             const SizedBox(height: 3),
             Container(
-              width: 36,
+              width: 44,
               height: 70,
               alignment: Alignment.bottomCenter,
               child: Container(
-                width: 36,
+                width: 44,
                 height: ratio * 70 < 4 ? (count > 0 ? 4 : 0) : ratio * 70,
                 decoration: BoxDecoration(
                   color: count > 0 ? AppTheme.primary : Colors.grey.shade200,
@@ -309,7 +326,7 @@ class _GuardianStatsScreenState extends State<GuardianStatsScreen>
               ),
             ),
             const SizedBox(height: 4),
-            Text(w, style: const TextStyle(fontSize: 10, color: AppTheme.textSecondary)),
+            Text(label, style: const TextStyle(fontSize: 9, color: AppTheme.textSecondary)),
           ],
         );
       }).toList(),

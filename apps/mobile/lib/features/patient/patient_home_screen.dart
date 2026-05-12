@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../core/storage.dart';
 import '../../core/notification_service.dart';
 import '../../data/api_client.dart';
+import 'daily_note_screen.dart';
 
 class PatientHomeScreen extends StatefulWidget {
   const PatientHomeScreen({super.key});
@@ -236,11 +237,10 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
         title: const Text('복약 모드'),
         automaticallyImplyLeading: false,
         actions: [
-          // 🔔 알림 테스트 버튼 (개발용 - 나중에 제거)
           IconButton(
-            icon: const Icon(Icons.notifications_active_outlined),
-            tooltip: '알림 테스트',
-            onPressed: _testMissedNotification,
+            icon: const Icon(Icons.person_outline),
+            tooltip: '내 정보',
+            onPressed: () => Navigator.pushNamed(context, '/profile'),
           ),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
@@ -266,6 +266,10 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
                     ),
                     const SizedBox(height: 20),
                     _buildProgressCard(),
+                    const SizedBox(height: 12),
+                    _buildNextDoseCard(),
+                    const SizedBox(height: 12),
+                    _buildMemoButton(),
                     const SizedBox(height: 20),
                     if (_schedules.isEmpty)
                       _buildEmptyState()
@@ -311,6 +315,96 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
             style: const TextStyle(color: Colors.white70, fontSize: 13),
           ),
         ],
+      ),
+    );
+  }
+
+  // 다음 복약까지 남은 시간
+  Widget _buildNextDoseCard() {
+    final slotTimes = {
+      'morning': const TimeOfDay(hour: 8, minute: 0),
+      'lunch': const TimeOfDay(hour: 12, minute: 0),
+      'dinner': const TimeOfDay(hour: 18, minute: 0),
+      'bedtime': const TimeOfDay(hour: 22, minute: 0),
+    };
+    final slotLabels = {'morning': '아침', 'lunch': '점심', 'dinner': '저녁', 'bedtime': '취침'};
+
+    final now = TimeOfDay.now();
+    final nowMinutes = now.hour * 60 + now.minute;
+
+    // 아직 안 먹은 슬롯 중 가장 가까운 것 찾기
+    final pendingSlots = _schedules
+        .where((s) => s['log_id'] == null)
+        .map((s) => s['time_slot'] as String)
+        .toSet()
+        .toList();
+
+    if (pendingSlots.isEmpty) return const SizedBox.shrink();
+
+    String? nextSlot;
+    int minDiff = 9999;
+    for (final slot in pendingSlots) {
+      final t = slotTimes[slot];
+      if (t == null) continue;
+      final slotMinutes = t.hour * 60 + t.minute;
+      final diff = slotMinutes - nowMinutes;
+      if (diff > 0 && diff < minDiff) {
+        minDiff = diff;
+        nextSlot = slot;
+      }
+    }
+
+    if (nextSlot == null) return const SizedBox.shrink();
+
+    final hours = minDiff ~/ 60;
+    final minutes = minDiff % 60;
+    final timeStr = hours > 0 ? '$hours시간 $minutes분 후' : '$minutes분 후';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.access_time, color: Colors.orange.shade600, size: 20),
+          const SizedBox(width: 10),
+          Text(
+            '${slotLabels[nextSlot]}약 복용까지 $timeStr',
+            style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w600, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 오늘 메모 버튼
+  Widget _buildMemoButton() {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => DailyNoteScreen(date: DateTime.now())),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.edit_note, color: AppTheme.primary, size: 22),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text('오늘 컨디션/메모 기록하기',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+            Icon(Icons.chevron_right, color: Colors.grey.shade400),
+          ],
+        ),
       ),
     );
   }

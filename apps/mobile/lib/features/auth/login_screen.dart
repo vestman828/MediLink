@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/storage.dart';
+import '../../core/guardian_alert_service.dart';
 import '../../data/api_client.dart';
 import '../../data/auth_repository.dart';
 
@@ -41,6 +42,10 @@ class _LoginScreenState extends State<LoginScreen> {
         name: result.name,
         role: result.role,
       );
+      // 보호자면 로그인 직후 미복약 알림 체크
+      if (result.role == 'guardian') {
+        await GuardianAlertService.checkAndNotify(result.accessToken);
+      }
       if (mounted) Navigator.pushReplacementNamed(context, '/home');
     } on ApiException catch (e) {
       _showError(e.message);

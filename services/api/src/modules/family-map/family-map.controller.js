@@ -52,7 +52,7 @@ async function getPatientsByGuardian(req, res) {
   try {
     const { guardian_id } = req.params;
     const [rows] = await pool.query(
-      `SELECT u.user_id, u.name, u.phone, fm.mapped_at
+      `SELECT u.user_id AS patient_id, u.name, u.phone, fm.mapped_at
        FROM family_map fm
        JOIN users u ON fm.patient_id = u.user_id
        WHERE fm.guardian_id = ?`,

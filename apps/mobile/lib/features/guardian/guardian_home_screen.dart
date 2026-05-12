@@ -124,6 +124,11 @@ class _GuardianHomeScreenState extends State<GuardianHomeScreen> {
               ],
             );
           }),
+          IconButton(
+            icon: const Icon(Icons.person_outline),
+            tooltip: '내 정보',
+            onPressed: () => Navigator.pushNamed(context, '/profile'),
+          ),
           IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
