@@ -191,13 +191,35 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                   children: _searchResults.map((m) => ListTile(
                     title: Text(m['name'] as String),
                     subtitle: Text(m['unit'] as String? ?? 'mg'),
-                    onTap: () {
-                      setState(() {
-                        _selectedMedicineId = m['medicine_id'] as int;
-                        _selectedMedicineName = m['name'] as String;
-                        _searchResults = [];
-                        _searchCtrl.text = _selectedMedicineName!;
-                      });
+                    onTap: () async {
+                      final name = m['name'] as String;
+                      final existingId = m['medicine_id'];
+                      if (existingId != null) {
+                        // DB에 있는 약
+                        setState(() {
+                          _selectedMedicineId = existingId as int;
+                          _selectedMedicineName = name;
+                          _searchResults = [];
+                          _searchCtrl.text = name;
+                        });
+                      } else {
+                        // e약은요 API에서 온 약 → DB에 먼저 등록
+                        try {
+                          final res = await ApiClient.post(
+                            '/medicines',
+                            {'name': name, 'unit': m['unit'] as String? ?? '정'},
+                            token: _token,
+                          );
+                          setState(() {
+                            _selectedMedicineId = res['medicine_id'] as int;
+                            _selectedMedicineName = name;
+                            _searchResults = [];
+                            _searchCtrl.text = name;
+                          });
+                        } catch (e) {
+                          _showSnack(e.toString(), isError: true);
+                        }
+                      }
                     },
                   )).toList(),
                 ),

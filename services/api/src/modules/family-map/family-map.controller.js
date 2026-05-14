@@ -65,4 +65,25 @@ async function getPatientsByGuardian(req, res) {
   }
 }
 
-module.exports = { searchPatientByPhone, createFamilyMap, getPatientsByGuardian };
+// 가족 연동 취소
+async function deleteFamilyMap(req, res) {
+  try {
+    const guardianId = req.user.user_id;
+    const { patient_id } = req.params;
+    if (!patient_id) return res.status(400).json({ success: false, message: 'patient_id 필요' });
+
+    const [result] = await pool.query(
+      'DELETE FROM family_map WHERE guardian_id = ? AND patient_id = ?',
+      [guardianId, patient_id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: '연동 정보를 찾을 수 없습니다.' });
+    }
+    return res.json({ success: true, message: '연동이 해제되었습니다.' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: '서버 오류' });
+  }
+}
+
+module.exports = { searchPatientByPhone, createFamilyMap, getPatientsByGuardian, deleteFamilyMap };

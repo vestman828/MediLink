@@ -4,6 +4,7 @@ import '../../core/storage.dart';
 import '../../data/api_client.dart';
 import 'add_medicine_screen.dart';
 import 'edit_medicine_screen.dart';
+import 'drug_detail_screen.dart';
 
 class MedicineListScreen extends StatefulWidget {
   const MedicineListScreen({super.key});
@@ -301,6 +302,17 @@ class _MedicineListScreenState extends State<MedicineListScreen> {
     final bgColor = isActive ? AppTheme.primary.withOpacity(0.1) : Colors.grey.withOpacity(0.1);
 
     return GestureDetector(
+      onTap: () {
+        final name = med['name'] as String? ?? '';
+        if (name.isNotEmpty) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DrugDetailScreen(medicineName: name),
+            ),
+          );
+        }
+      },
       onLongPress: () => _showOptions(med),
       child: Opacity(
         opacity: isActive ? 1.0 : 0.6,

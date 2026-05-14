@@ -8,6 +8,7 @@ import '../../core/storage.dart';
 import '../../core/notification_service.dart';
 import '../../data/api_client.dart';
 import 'daily_note_screen.dart';
+import 'family_request_screen.dart';
 
 class PatientHomeScreen extends StatefulWidget {
   const PatientHomeScreen({super.key});
@@ -34,6 +35,23 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
     _userId = await Storage.getUserId();
     _token = await Storage.getToken();
     await _loadSchedules();
+    await _checkFamilyRequests();
+  }
+
+  Future<void> _checkFamilyRequests() async {
+    if (_token == null) return;
+    try {
+      final res = await ApiClient.get('/family-requests/pending', token: _token);
+      final requests = res['data'] as List<dynamic>? ?? [];
+      if (requests.isNotEmpty && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FamilyRequestScreen(requests: requests, token: _token!),
+          ),
+        ).then((_) => _init());
+      }
+    } catch (_) {}
   }
 
   // 외부(PatientMainScreen)에서 탭 전환 시 호출

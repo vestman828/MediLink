@@ -15,6 +15,7 @@ const familyMapRoutes = require('./modules/family-map/family-map.routes');
 const usersRoutes = require('./modules/users/users.routes');
 const dailyNotesRoutes = require('./modules/daily-notes/daily-notes.routes');
 const guardianAlertsRoutes = require('./modules/guardian-alerts/guardian-alerts.routes');
+const familyRequestsRoutes = require('./modules/family-requests/family-requests.routes');
 
 const app = express();
 
@@ -43,5 +44,6 @@ app.use('/api/family-map', familyMapRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/daily-notes', dailyNotesRoutes);
 app.use('/api/guardian-alerts', guardianAlertsRoutes);
+app.use('/api/family-requests', familyRequestsRoutes);
 
 module.exports = app;

@@ -136,9 +136,9 @@ class _FamilyLinkScreenState extends State<FamilyLinkScreen> {
                       ),
                       onPressed: () async {
                         Navigator.pop(ctx);
-                        await _linkFamily(foundPatient!['user_id'] as int);
+                        await _sendRequest(phoneCtrl.text.trim());
                       },
-                      child: const Text('연동하기'),
+                      child: const Text('연동 요청 보내기'),
                     ),
                   ],
                   const SizedBox(height: 8),
@@ -155,17 +155,16 @@ class _FamilyLinkScreenState extends State<FamilyLinkScreen> {
     );
   }
 
-  Future<void> _linkFamily(int patientId) async {
+  Future<void> _sendRequest(String phone) async {
     try {
-      await ApiClient.post('/family-map', {
-        'guardian_id': _guardianId,
-        'patient_id': patientId,
-      }, token: _token);
+      await ApiClient.post('/family-requests/send', {'phone': phone}, token: _token);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('가족 연동 완료!'), backgroundColor: Colors.green),
+          const SnackBar(
+            content: Text('연동 요청을 보냈습니다. 환자가 수락하면 연동됩니다.'),
+            backgroundColor: Colors.green,
+          ),
         );
-        await _load();
       }
     } catch (e) {
       if (mounted) {
@@ -220,47 +219,87 @@ class _FamilyLinkScreenState extends State<FamilyLinkScreen> {
     );
   }
 
-  Widget _buildCard(dynamic patient) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: const Icon(Icons.person, color: AppTheme.primary, size: 28),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  patient['name'] as String? ?? '',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
-                if (patient['phone'] != null)
-                  Text(patient['phone'] as String, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.green.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text('연동됨', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600)),
+  Future<void> _unlinkFamily(dynamic patient) async {
+    final patientId = (patient['patient_id'] ?? patient['user_id']) as int;
+    final patientName = patient['name'] as String? ?? '환자';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('연동 취소'),
+        content: Text('$patientName님과의 연동을 취소하시겠어요?\n더 이상 복약 현황을 확인할 수 없게 됩니다.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('아니요')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('연동 취소'),
           ),
         ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ApiClient.delete('/family-map/patients/$patientId', token: _token);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('연동이 해제되었습니다.'), backgroundColor: Colors.orange),
+        );
+        await _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Widget _buildCard(dynamic patient) {
+    return GestureDetector(
+      onLongPress: () => _unlinkFamily(patient),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Icon(Icons.person, color: AppTheme.primary, size: 28),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    patient['name'] as String? ?? '',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  if (patient['phone'] != null)
+                    Text(patient['phone'] as String, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text('연동됨', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
       ),
     );
   }

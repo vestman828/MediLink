@@ -1,6 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import 'storage.dart';
 
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
@@ -11,7 +12,8 @@ class NotificationService {
   static const _reminderChannelId = 'medilink_reminder';
   static const _reminderChannelName = 'MediLink 재알림';
 
-  static final _slotTimes = {
+  // 기본값 (Storage에 저장된 값 없을 때)
+  static final _defaultSlotTimes = {
     'morning':  [8,  0],
     'lunch':    [12, 0],
     'dinner':   [18, 0],
@@ -105,6 +107,9 @@ class NotificationService {
   static Future<void> scheduleFromSlots(List<Map<String, dynamic>> slots) async {
     await cancelAll();
 
+    // 저장된 커스텀 시간 불러오기
+    final savedTimes = await Storage.getSlotTimes();
+
     final registered = <String>{};
     int id = 100;
 
@@ -113,7 +118,7 @@ class NotificationService {
       if (registered.contains(timeSlot)) continue;
       registered.add(timeSlot);
 
-      final times = _slotTimes[timeSlot];
+      final times = savedTimes[timeSlot] ?? _defaultSlotTimes[timeSlot];
       if (times == null) continue;
 
       final label = _slotLabels[timeSlot] ?? timeSlot;

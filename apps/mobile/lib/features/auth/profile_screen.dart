@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../core/storage.dart';
+import '../../core/notification_service.dart';
 import '../../data/api_client.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -16,6 +17,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _phone = '';
   String _role = '';
   bool _loading = true;
+  Map<String, List<int>> _slotTimes = {
+    'morning': [8, 0],
+    'lunch': [12, 0],
+    'dinner': [18, 0],
+    'bedtime': [22, 0],
+  };
 
   @override
   void initState() {
@@ -25,6 +32,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _load() async {
     _token = await Storage.getToken();
+    final savedTimes = await Storage.getSlotTimes();
     try {
       final res = await ApiClient.get('/users/me', token: _token);
       final data = res['data'] as Map<String, dynamic>;
@@ -33,11 +41,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _name = data['name'] as String? ?? '';
           _phone = data['phone'] as String? ?? '';
           _role = data['role'] as String? ?? '';
+          _slotTimes = savedTimes;
           _loading = false;
         });
       }
     } catch (e) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _editSlotTime(String slot, String label) async {
+    final current = _slotTimes[slot] ?? [8, 0];
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: current[0], minute: current[1]),
+      helpText: '$label 알림 시간 설정',
+      confirmText: '확인',
+      cancelText: '취소',
+    );
+    if (picked == null) return;
+    await Storage.saveSlotTime(slot, picked.hour, picked.minute);
+    final updated = Map<String, List<int>>.from(_slotTimes);
+    updated[slot] = [picked.hour, picked.minute];
+    setState(() => _slotTimes = updated);
+    // 알림 재등록 안내
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$label 알림이 ${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}으로 변경되었어요.\n약 관리 화면을 다시 열면 알림이 재등록됩니다.'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -273,6 +308,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // 알림 시간 설정 (환자 모드만)
+                if (_role == 'patient') ...[
+                  _sectionTitle('복약 알림 시간'),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      children: [
+                        _slotTimeTile('morning', '아침'),
+                        const Divider(height: 1, indent: 56),
+                        _slotTimeTile('lunch', '점심'),
+                        const Divider(height: 1, indent: 56),
+                        _slotTimeTile('dinner', '저녁'),
+                        const Divider(height: 1, indent: 56),
+                        _slotTimeTile('bedtime', '취침'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
                 // 보안
                 _sectionTitle('보안'),
                 Container(
@@ -313,6 +371,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.only(bottom: 8),
         child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textSecondary)),
       );
+
+  Widget _slotTimeTile(String slot, String label) {
+    final times = _slotTimes[slot] ?? [8, 0];
+    final timeStr = '${times[0].toString().padLeft(2, '0')}:${times[1].toString().padLeft(2, '0')}';
+    return ListTile(
+      leading: const Icon(Icons.alarm, color: AppTheme.primary),
+      title: Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+      subtitle: Text(timeStr, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87)),
+      trailing: const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+      onTap: () => _editSlotTime(slot, label),
+    );
+  }
 
   Widget _infoTile({
     required IconData icon,

@@ -59,4 +59,18 @@ async function updatePassword(req, res) {
   }
 }
 
-module.exports = { getMe, updateName, updatePassword };
+// FCM 토큰 저장
+async function updateFcmToken(req, res) {
+  try {
+    const userId = req.user.user_id;
+    const { fcm_token } = req.body;
+    if (!fcm_token) return res.status(400).json({ success: false, message: 'fcm_token 필요' });
+    await pool.query(`UPDATE users SET fcm_token = ? WHERE user_id = ?`, [fcm_token, userId]);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: '서버 오류' });
+  }
+}
+
+module.exports = { getMe, updateName, updatePassword, updateFcmToken };
