@@ -1,2 +1,2 @@
 // auth module entry
-export {};
+// auth module entry
