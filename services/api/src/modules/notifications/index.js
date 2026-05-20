@@ -1,2 +1,2 @@
 // notifications module entry
-export {};
+// stub

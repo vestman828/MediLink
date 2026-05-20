@@ -14,6 +14,10 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
+# Firebase 서비스 계정 키 (보안)
+firebase-adminsdk.json
+*-firebase-adminsdk-*.json
+
 # Node
 node_modules/
 dist/
@@ -42,3 +46,6 @@ build/
 
 # Uploads
 uploads/
+
+# 테스트 스크립트
+send_test_fcm.js

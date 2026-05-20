@@ -1,2 +1,2 @@
 // users module entry
-export {};
+// stub
