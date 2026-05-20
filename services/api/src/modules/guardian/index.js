@@ -1,2 +1,2 @@
 // guardian module entry
-export {};
+// stub
