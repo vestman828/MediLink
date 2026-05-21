@@ -1,2 +1,2 @@
 // schedules module entry
-export {};
+// stub
