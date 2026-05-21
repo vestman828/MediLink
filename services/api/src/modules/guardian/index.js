@@ -1,0 +1,2 @@
+// guardian module entry
+// stub

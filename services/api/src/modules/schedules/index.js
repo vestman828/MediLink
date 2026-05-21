@@ -1,0 +1,2 @@
+// schedules module entry
+// stub
