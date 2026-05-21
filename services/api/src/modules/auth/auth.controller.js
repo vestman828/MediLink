@@ -212,15 +212,12 @@ async function verifySignupOtp(req, res) {
 
 async function signup(req, res) {
   try {
-    // 💡 인증 테이블 확인 로직은 유지
     await ensurePhoneVerificationsTable();
 
-    // 💡 1. 필수로 요구하던 verify_token 슬쩍 빼기!
-    const { name, phone, password, role } = req.body; 
+    const { name, phone, password, role, verify_token } = req.body;
     const normalizedPhone = normalizePhone(phone);
 
-    // 💡 2. 필수값 검사에서도 verify_token 빼기!
-    if (!name || !phone || !password || !role) {
+    if (!name || !phone || !password || !role || !verify_token) {
       return res.status(400).json({ success: false, message: '필수값이 누락되었습니다.' });
     }
     if (!isValidPhone(normalizedPhone)) {
@@ -247,9 +244,37 @@ async function signup(req, res) {
         return res.status(409).json({ success: false, message: '이미 가입된 전화번호입니다.' });
       }
 
-      // ==========================================
-      // 🚀 골치 아팠던 OTP 검문소 통째로 철거 완료!
-      // ==========================================
+      const [verificationRows] = await conn.query(
+        `SELECT verification_id, verified_at,
+                (expires_at <= NOW()) AS is_expired,
+                TIMESTAMPDIFF(SECOND, verified_at, NOW()) AS verified_elapsed_sec
+         FROM phone_verifications
+         WHERE phone = ?
+           AND purpose = 'signup'
+           AND verify_token = ?
+           AND consumed_at IS NULL
+         ORDER BY verification_id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [normalizedPhone, verify_token]
+      );
+
+      if (verificationRows.length === 0) {
+        await conn.rollback();
+        return res.status(400).json({ success: false, message: '전화번호 인증이 필요합니다.' });
+      }
+
+      const vr = verificationRows[0];
+      if (!vr.verified_at) {
+        await conn.rollback();
+        return res.status(400).json({ success: false, message: '전화번호 인증이 필요합니다.' });
+      }
+
+      const verifiedElapsedSec = Number(vr.verified_elapsed_sec ?? Number.MAX_SAFE_INTEGER);
+      if (Number(vr.is_expired) === 1 || verifiedElapsedSec > VERIFY_TOKEN_TTL_MINUTES * 60) {
+        await conn.rollback();
+        return res.status(400).json({ success: false, message: '인증이 만료되었습니다. 다시 인증해주세요.' });
+      }
 
       const passwordHash = await bcrypt.hash(password, 10);
       const [result] = await conn.query(
@@ -258,7 +283,12 @@ async function signup(req, res) {
         [name.trim(), formatPhone(normalizedPhone), passwordHash, role]
       );
 
-      // (OTP 소진 처리하는 UPDATE 문도 필요 없어져서 철거!)
+      await conn.query(
+        `UPDATE phone_verifications
+         SET consumed_at = NOW()
+         WHERE verification_id = ?`,
+        [vr.verification_id]
+      );
 
       await conn.commit();
       return res.status(201).json({ success: true, user_id: result.insertId });
