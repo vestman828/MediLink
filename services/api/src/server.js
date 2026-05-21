@@ -185,7 +185,14 @@ function startScheduler() {
 
       const nowMinutes = kstHour * 60 + kstMinute;
       const slotsToCheck = Object.entries(SLOT_CUTOFF)
-        .filter(([, cutoff]) => nowMinutes >= cutoff.hour * 60 + cutoff.minute)
+        .filter(([slot, cutoff]) => {
+          const cutoffMinutes = cutoff.hour * 60 + cutoff.minute;
+          const slotMinutes = SLOT_TIMES[slot].hour * 60 + SLOT_TIMES[slot].minute;
+          // 커트오프가 슬롯 시간보다 작으면 자정을 넘어가는 케이스(취침 22:00 → 커트오프 00:00).
+          // 이 경우 현재 시각이 슬롯 예정 시간을 지난 경우에만 미복약으로 판단한다.
+          if (cutoffMinutes < slotMinutes) return nowMinutes >= slotMinutes;
+          return nowMinutes >= cutoffMinutes;
+        })
         .map(([slot]) => slot);
 
       if (slotsToCheck.length === 0) return;
