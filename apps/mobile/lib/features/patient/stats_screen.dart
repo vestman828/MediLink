@@ -33,6 +33,7 @@ class StatsScreenState extends State<StatsScreen> {
 
   Future<void> _load() async {
     if (_userId == null || _token == null) return;
+    if (mounted) setState(() => _loading = true);
     try {
       final res = await ApiClient.get(
         '/statistics/adherence',

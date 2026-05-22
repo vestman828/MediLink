@@ -24,10 +24,12 @@ class _PatientMainScreenState extends State<PatientMainScreen> {
   void _onTabTap(int i) {
     if (i == _currentIndex) return;
     setState(() => _currentIndex = i);
-    // 탭 전환 시 해당 화면 데이터 새로고침
-    if (i == 0) _homeKey.currentState?.load();
-    if (i == 2) _historyKey.currentState?.load();
-    if (i == 3) _statsKey.currentState?.load();
+    // 프레임 렌더링 완료 후 새로고침 (currentState null 방지)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (i == 0) _homeKey.currentState?.load();
+      if (i == 2) _historyKey.currentState?.load();
+      if (i == 3) _statsKey.currentState?.load();
+    });
   }
 
   @override

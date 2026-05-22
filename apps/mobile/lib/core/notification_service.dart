@@ -124,35 +124,71 @@ class NotificationService {
     return _defaultSlotTimes[slot];
   }
 
+  // 시간 포맷: HH:mm
+  static String _formatHHmm(int hour, int minute) {
+    return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+  }
+
   // 복약 스케줄 기반으로 알림 + 30분 후 재알림 일괄 등록
+  // - 같은 시간대의 여러 약은 하나의 알림으로 통합
+  // - custom 슬롯은 실제 시간(HH:mm)을 레이블로 표시
   static Future<void> scheduleFromSchedules(
     List<Map<String, dynamic>> schedules,
   ) async {
     await cancelAll();
 
-    final registered = <String>{};
-    int id = 100;
+    // 시간 키(HH:mm)별로 미복약 스케줄 묶기
+    final timeGroups = <String, List<Map<String, dynamic>>>{};
+    final timeToHM = <String, List<int>>{};
 
     for (final schedule in schedules) {
       if (schedule['log_id'] != null || schedule['status'] == 'taken') continue;
-
-      final timeSlot = schedule['time_slot'] as String? ?? '';
       final times = _resolveScheduleTime(schedule);
       if (times == null) continue;
 
-      final key = '$timeSlot-${times[0]}:${times[1]}';
-      if (registered.contains(key)) continue;
-      registered.add(key);
+      final key = _formatHHmm(times[0], times[1]);
+      timeGroups.putIfAbsent(key, () => []).add(schedule);
+      timeToHM[key] = times;
+    }
 
-      final label = _slotLabels[timeSlot] ?? timeSlot;
+    int id = 100;
+
+    for (final entry in timeGroups.entries) {
+      final timeKey = entry.key; // 'HH:mm'
+      final group = entry.value;
+      final times = timeToHM[timeKey]!;
       final hour = times[0];
       final minute = times[1];
+
+      // 시간 레이블 결정: 모두 같은 표준 슬롯이면 그 이름, 아니면 HH:mm
+      final slots = group.map((s) => s['time_slot'] as String? ?? '').toSet();
+      String label;
+      if (slots.length == 1 && slots.first != 'custom') {
+        label = _slotLabels[slots.first] ?? timeKey;
+      } else {
+        label = timeKey; // custom 또는 혼합 → 시간으로 표시
+      }
+
+      // 약 이름 목록 (최대 3개, 초과 시 '외 N개')
+      final names = group
+          .map((s) => (s['medicine_name'] as String? ?? '').trim())
+          .where((n) => n.isNotEmpty)
+          .toSet()
+          .toList();
+      String medicineText;
+      if (names.isEmpty) {
+        medicineText = '복약';
+      } else if (names.length <= 2) {
+        medicineText = names.join(', ');
+      } else {
+        medicineText = '${names.take(2).join(', ')} 외 ${names.length - 2}개';
+      }
 
       // 1차 알림: 복약 시간
       await scheduleDailyNotification(
         id: id++,
-        title: '💊 복약 시간이에요!',
-        body: '$label 복약을 잊지 마세요',
+        title: '💊 복약 시간이에요! ($label)',
+        body: '$medicineText 복약을 잊지 마세요',
         hour: hour,
         minute: minute,
       );
@@ -164,8 +200,8 @@ class NotificationService {
 
       await scheduleDailyNotification(
         id: id++,
-        title: '⚠️ 아직 복약 안 하셨나요?',
-        body: '$label 약을 아직 드시지 않으셨어요. 지금 바로 복약해주세요!',
+        title: '⚠️ 아직 복약 안 하셨나요? ($label)',
+        body: '$medicineText 아직 복약하지 않으셨어요. 지금 바로 확인해주세요!',
         hour: reminderHour,
         minute: finalMinute,
         channelId: _reminderChannelId,

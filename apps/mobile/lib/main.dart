@@ -61,6 +61,10 @@ class _MediLinkAppState extends State<MediLinkApp> {
       _servicesInitialized = true;
       try {
         await NotificationService.init();
+        // 로그인하지 않은 상태라면 이전 세션의 예약 알람을 모두 취소
+        if (!widget.isLoggedIn) {
+          await NotificationService.cancelAll();
+        }
         await FcmService.init();
       } catch (e) {
         debugPrint('[BOOT] service init failed: $e');

@@ -492,7 +492,7 @@ class _MedicineListScreenState extends State<MedicineListScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${med['dose']}  |  ${med['unit'] ?? 'mg'}',
+                      '${med['dose']}',
                       style: const TextStyle(
                           color: AppTheme.textSecondary, fontSize: 13),
                     ),

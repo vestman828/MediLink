@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/fcm_service.dart';
 import '../../core/notification_service.dart';
 import '../../core/storage.dart';
 import '../../core/theme.dart';
@@ -20,7 +21,8 @@ class PatientHomeScreen extends StatefulWidget {
   State<PatientHomeScreen> createState() => PatientHomeScreenState();
 }
 
-class PatientHomeScreenState extends State<PatientHomeScreen> {
+class PatientHomeScreenState extends State<PatientHomeScreen>
+    with WidgetsBindingObserver {
   final _authRepo = AuthRepository();
 
   String? _name;
@@ -29,12 +31,44 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
   List<dynamic> _schedules = [];
   bool _loading = true;
 
+  // 연동 요청 중복 팝업 방지용 쿨다운
+  // lifecycle resume: 5초 (앱 전환 시 즉시 재확인)
+  // tab switch(load): 60초 (탭 이동 시 과도한 호출 방지)
+  DateTime? _lastFamilyCheckLifecycle;
+  DateTime? _lastFamilyCheckLoad;
+  bool _familyCheckInProgress = false;
+
   DateTime _nowKst() => DateTime.now().toUtc().add(const Duration(hours: 9));
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // FCM family_request 메시지 수신 시 즉시 팝업 표시
+    FcmService.onFamilyRequest = () {
+      if (mounted) _checkFamilyRequests();
+    };
     _init();
+  }
+
+  @override
+  void dispose() {
+    FcmService.onFamilyRequest = null;
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // 앱이 포그라운드로 돌아올 때 연동 요청 재확인 (쿨다운 5초)
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      final now = DateTime.now();
+      if (_lastFamilyCheckLifecycle == null ||
+          now.difference(_lastFamilyCheckLifecycle!).inSeconds >= 5) {
+        _lastFamilyCheckLifecycle = now;
+        _checkFamilyRequests();
+      }
+    }
   }
 
   Future<void> _init() async {
@@ -47,6 +81,8 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
 
   Future<void> _checkFamilyRequests() async {
     if (_token == null) return;
+    if (_familyCheckInProgress) return; // 중복 실행 방지
+    _familyCheckInProgress = true;
 
     try {
       final res =
@@ -63,11 +99,21 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
       }
     } catch (_) {
       // ignore
+    } finally {
+      _familyCheckInProgress = false;
     }
   }
 
-  // Called when tab becomes active again.
-  Future<void> load() => _loadSchedules();
+  // 탭 전환 시 호출: 스케줄 새로고침 + 연동 요청 확인 (60초 쿨다운)
+  Future<void> load() async {
+    await _loadSchedules();
+    final now = DateTime.now();
+    if (_lastFamilyCheckLoad == null ||
+        now.difference(_lastFamilyCheckLoad!).inSeconds >= 60) {
+      _lastFamilyCheckLoad = now;
+      _checkFamilyRequests();
+    }
+  }
 
   Future<void> _loadSchedules() async {
     if (_userId == null || _token == null) return;
@@ -376,6 +422,11 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
     final nextSlot = nextSchedule['time_slot'] as String? ?? '';
     final nextTime = _displayTime(nextSchedule['scheduled_time'] as String?);
 
+    // custom 슬롯은 시간만, 표준 슬롯은 '아침(08:00)' 형식
+    final label = nextSlot == 'custom'
+        ? nextTime
+        : '${slotLabels[nextSlot] ?? nextSlot}($nextTime)';
+
     final hours = minDiff ~/ 60;
     final minutes = minDiff % 60;
     final timeStr = hours > 0 ? '$hours시간 $minutes분' : '$minutes분';
@@ -392,7 +443,7 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
           Icon(Icons.access_time, color: Colors.orange.shade600, size: 20),
           const SizedBox(width: 10),
           Text(
-            '${slotLabels[nextSlot] ?? nextSlot}($nextTime) 복약까지 $timeStr',
+            '$label 복약까지 $timeStr',
             style: TextStyle(
                 color: Colors.orange.shade800,
                 fontWeight: FontWeight.w600,
@@ -453,38 +504,50 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   List<Widget> _buildScheduleList() {
+    // custom 슬롯은 scheduled_time별로 독립 그룹으로 분리
+    // → 03:00(custom), 아침(08:00), 점심(12:00), 19:00(custom) 순으로 인터리브
     final grouped = <String, List<dynamic>>{};
+
     for (final s in _schedules) {
       final slot = s['time_slot'] as String;
-      grouped.putIfAbsent(slot, () => []).add(s);
+      String key;
+      if (slot == 'custom') {
+        final t = (s['scheduled_time'] ?? '').toString();
+        key = 'custom_$t'; // 시간별 독립 그룹
+      } else {
+        key = slot;
+      }
+      grouped.putIfAbsent(key, () => []).add(s);
     }
 
-    const slotOrder = ['morning', 'lunch', 'dinner', 'bedtime', 'custom'];
-    final orderedSlots = <String>[
-      ...slotOrder.where(grouped.containsKey),
-      ...grouped.keys.where((slot) => !slotOrder.contains(slot)),
-    ];
-    orderedSlots.sort((a, b) {
-      final aIndex = slotOrder.indexOf(a);
-      final bIndex = slotOrder.indexOf(b);
-      if (aIndex >= 0 && bIndex >= 0) return aIndex.compareTo(bIndex);
-      if (aIndex >= 0) return -1;
-      if (bIndex >= 0) return 1;
-      final aMin = _slotSortMinutes(grouped[a]!);
-      final bMin = _slotSortMinutes(grouped[b]!);
-      if (aMin != bMin) return aMin.compareTo(bMin);
-      return a.compareTo(b);
-    });
+    // 각 그룹 내 약도 scheduled_time 기준 정렬
+    for (final group in grouped.values) {
+      group.sort((a, b) {
+        final aMin = _parseTimeToMinutes(a['scheduled_time'] as String?) ?? 9999;
+        final bMin = _parseTimeToMinutes(b['scheduled_time'] as String?) ?? 9999;
+        return aMin.compareTo(bMin);
+      });
+    }
+
+    // 그룹을 실제 시간순으로 정렬
+    final orderedKeys = grouped.keys.toList()
+      ..sort((a, b) =>
+          _slotSortMinutes(grouped[a]!).compareTo(_slotSortMinutes(grouped[b]!)));
 
     final widgets = <Widget>[];
 
-    for (final slot in orderedSlots) {
-      final schedules = grouped[slot] ?? <dynamic>[];
+    for (final key in orderedKeys) {
+      final schedules = grouped[key] ?? <dynamic>[];
+
+      // 헤더 레이블: custom_HH:MM:SS → HH:MM, 표준 슬롯 → 아침/점심/...
+      final headerLabel = key.startsWith('custom_')
+          ? _displayTime(schedules.first['scheduled_time'] as String?)
+          : _timeSlotLabel(key);
 
       widgets.add(
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: Text(_timeSlotLabel(slot),
+          child: Text(headerLabel,
               style:
                   const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         ),
@@ -515,6 +578,7 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
   Widget _buildMedicineCard(dynamic schedule) {
     final isTaken = schedule['log_id'] != null;
     final scheduleId = schedule['schedule_id'] as int;
+    final isEarly = !isTaken && _isBeforeScheduledTime(schedule);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -533,12 +597,18 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
             decoration: BoxDecoration(
               color: isTaken
                   ? Colors.green.shade100
-                  : AppTheme.primary.withOpacity(0.1),
+                  : isEarly
+                      ? Colors.grey.shade100
+                      : AppTheme.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               isTaken ? Icons.check_circle : Icons.medication,
-              color: isTaken ? Colors.green : AppTheme.primary,
+              color: isTaken
+                  ? Colors.green
+                  : isEarly
+                      ? Colors.grey.shade400
+                      : AppTheme.primary,
               size: 28,
             ),
           ),
@@ -557,6 +627,15 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
                   style: const TextStyle(
                       color: AppTheme.textSecondary, fontSize: 13),
                 ),
+                if (isEarly)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text(
+                      '복약 시간이 되면 활성화됩니다',
+                      style: TextStyle(
+                          fontSize: 11, color: Colors.grey.shade400),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -564,40 +643,57 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                // 먹었어요 버튼: 시간 전이면 비활성화
                 ElevatedButton(
-                  onPressed: () => _checkIntake(scheduleId),
+                  onPressed: isEarly ? null : () => _checkIntake(scheduleId),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
+                    backgroundColor:
+                        isEarly ? Colors.grey.shade300 : AppTheme.primary,
+                    foregroundColor:
+                        isEarly ? Colors.grey.shade500 : Colors.white,
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10)),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    disabledBackgroundColor: Colors.grey.shade200,
+                    disabledForegroundColor: Colors.grey.shade400,
                   ),
                   child: const Text('먹었어요', style: TextStyle(fontSize: 13)),
                 ),
                 const SizedBox(height: 4),
+                // 사진 버튼: 시간 전이면 비활성화
                 GestureDetector(
-                  onTap: () => _checkIntakeWithPhoto(scheduleId),
+                  onTap: isEarly ? null : () => _checkIntakeWithPhoto(scheduleId),
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
+                      color: isEarly
+                          ? Colors.grey.shade100
+                          : Colors.orange.shade50,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.orange.shade200),
+                      border: Border.all(
+                          color: isEarly
+                              ? Colors.grey.shade300
+                              : Colors.orange.shade200),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.camera_alt,
-                            size: 13, color: Colors.orange.shade700),
+                            size: 13,
+                            color: isEarly
+                                ? Colors.grey.shade400
+                                : Colors.orange.shade700),
                         const SizedBox(width: 3),
                         Text('사진',
                             style: TextStyle(
-                                fontSize: 12, color: Colors.orange.shade700)),
+                                fontSize: 12,
+                                color: isEarly
+                                    ? Colors.grey.shade400
+                                    : Colors.orange.shade700)),
                       ],
                     ),
                   ),
@@ -611,6 +707,14 @@ class PatientHomeScreenState extends State<PatientHomeScreen> {
         ],
       ),
     );
+  }
+
+  // scheduled_time이 아직 지나지 않았으면 true (복약 버튼 비활성화용)
+  bool _isBeforeScheduledTime(dynamic schedule) {
+    final nowMin = _nowKst().hour * 60 + _nowKst().minute;
+    final schedMin = _parseTimeToMinutes(schedule['scheduled_time'] as String?);
+    if (schedMin == null) return false;
+    return nowMin < schedMin;
   }
 
   int? _parseTimeToMinutes(String? raw) {

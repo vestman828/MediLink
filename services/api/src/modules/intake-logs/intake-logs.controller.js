@@ -51,17 +51,32 @@ async function createIntakeLog(req, res) {
 
     const schedule = scheduleRows[0];
     const kstWeekday = getKstWeekday();
-    if (Number(schedule.day_of_week) !== kstWeekday) {
+    const nowMinutes = getKstNowMinutes();
+    const scheduledMinutes = parseTimeToMinutes(schedule.scheduled_time);
+
+    // 새벽 유예 처리: 현재 시각이 자정~02:00 사이이고,
+    // 전날 22:00 이후 스케줄을 체크하는 경우 허용 (예: 23:30 스케줄을 00:30에 체크)
+    const previousWeekday = (kstWeekday + 6) % 7;
+    const isEarlyMorning = nowMinutes < 120; // 02:00 이전
+    const isLateNightSchedule = scheduledMinutes >= 22 * 60; // 22:00 이후
+    const isGracePeriod =
+      isEarlyMorning &&
+      isLateNightSchedule &&
+      Number(schedule.day_of_week) === previousWeekday;
+
+    if (Number(schedule.day_of_week) !== kstWeekday && !isGracePeriod) {
       return res.status(400).json({ success: false, message: '오늘 복약 스케줄만 체크할 수 있습니다.' });
     }
 
-    const nowMinutes = getKstNowMinutes();
-    const scheduledMinutes = parseTimeToMinutes(schedule.scheduled_time);
-    if (nowMinutes < scheduledMinutes) {
+    if (!isGracePeriod && nowMinutes < scheduledMinutes) {
       return res.status(400).json({ success: false, message: '복약 예정 시간 이전에는 체크할 수 없습니다.' });
     }
 
-    const kstDate = getKstDateString();
+    // 유예 기간 체크인은 전날 날짜를 기준으로 중복 확인
+    const checkBase = isGracePeriod
+      ? new Date(Date.now() - 24 * 60 * 60 * 1000)
+      : new Date();
+    const kstDate = getKstDateString(checkBase);
     const [existing] = await pool.query(
       `SELECT log_id
        FROM intake_logs

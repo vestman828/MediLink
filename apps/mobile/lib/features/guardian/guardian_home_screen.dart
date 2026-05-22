@@ -105,11 +105,25 @@ class _GuardianHomeScreenState extends State<GuardianHomeScreen> {
         return '저녁';
       case 'bedtime':
         return '취침';
-      case 'custom':
-        return '직접설정';
       default:
         return slot;
     }
+  }
+
+  // custom 슬롯은 실제 scheduled_time을 표시
+  String _scheduleLabel(dynamic schedule) {
+    final slot = schedule['time_slot'] as String? ?? '';
+    if (slot == 'custom') {
+      return _formatScheduledTime(schedule['scheduled_time'] as String?);
+    }
+    return _timeSlotLabel(slot);
+  }
+
+  String _formatScheduledTime(String? raw) {
+    if (raw == null || raw.isEmpty) return '--:--';
+    final parts = raw.split(':');
+    if (parts.length < 2) return raw;
+    return '${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
   }
 
   @override
@@ -412,7 +426,7 @@ class _GuardianHomeScreenState extends State<GuardianHomeScreen> {
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
-              _timeSlotLabel(schedule['time_slot'] as String? ?? ''),
+              _scheduleLabel(schedule),
               style: TextStyle(
                   color: _statusColor(status),
                   fontSize: 12,

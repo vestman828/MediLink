@@ -1,4 +1,6 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 
 import '../../core/storage.dart';
 import '../../core/theme.dart';
@@ -22,10 +24,17 @@ class EditMedicineScreen extends StatefulWidget {
 
 class _EditMedicineScreenState extends State<EditMedicineScreen> {
   final _doseCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
 
   String? _token;
   bool _loading = true;
   bool _saving = false;
+
+  // 약 이름 검색
+  Timer? _searchDebounce;
+  bool _searching = false;
+  bool _suppressSearchOnce = false;
+  List<Map<String, dynamic>> _searchResults = [];
 
   final List<TimeOfDay> _customTimes = [];
 
@@ -76,13 +85,54 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
   void initState() {
     super.initState();
     _doseCtrl.text = widget.currentDose;
+    _nameCtrl.text = widget.medicineName;
     _init();
   }
 
   @override
   void dispose() {
     _doseCtrl.dispose();
+    _nameCtrl.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
+  }
+
+  Future<void> _onNameChanged(String value) async {
+    if (_suppressSearchOnce) {
+      _suppressSearchOnce = false;
+      return;
+    }
+    final query = value.trim();
+    _searchDebounce?.cancel();
+    if (query.isEmpty) {
+      if (mounted) setState(() { _searchResults = []; _searching = false; });
+      return;
+    }
+    setState(() => _searching = true);
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+      if (_token == null) { if (mounted) setState(() => _searching = false); return; }
+      try {
+        final res = await ApiClient.get('/medicines/search', token: _token, queryParams: {'q': query});
+        if (!mounted || _nameCtrl.text.trim() != query) return;
+        final raw = res['data'] as List<dynamic>? ?? [];
+        setState(() {
+          _searchResults = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          _searching = false;
+        });
+      } catch (_) {
+        if (mounted) setState(() { _searchResults = []; _searching = false; });
+      }
+    });
+  }
+
+  void _selectName(Map<String, dynamic> medicine) {
+    final name = (medicine['name'] ?? '').toString().trim();
+    if (name.isEmpty) return;
+    _suppressSearchOnce = true;
+    _nameCtrl.text = name;
+    _nameCtrl.selection = TextSelection.fromPosition(TextPosition(offset: name.length));
+    setState(() { _searchResults = []; _searching = false; });
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _init() async {
@@ -332,6 +382,16 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
     setState(() => _saving = true);
 
     try {
+      // 이름이 변경된 경우 먼저 rename 호출
+      final newName = _nameCtrl.text.trim();
+      if (newName.isNotEmpty && newName != widget.medicineName) {
+        await ApiClient.patch(
+          '/patient-medicines/${widget.patientMedicineId}/rename',
+          token: _token,
+          body: {'medicine_name': newName},
+        );
+      }
+
       await ApiClient.put(
         '/schedules/by-medicine/${widget.patientMedicineId}',
         token: _token,
@@ -378,7 +438,7 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(title: Text('${widget.medicineName} 수정')),
+      appBar: AppBar(title: const Text('약 수정')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -386,27 +446,62 @@ class _EditMedicineScreenState extends State<EditMedicineScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.medication, color: AppTheme.primary),
-                        const SizedBox(width: 10),
-                        Text(
-                          widget.medicineName,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primary,
-                          ),
-                        ),
-                      ],
+                  const SizedBox(height: 4),
+                  _sectionTitle('약 이름'),
+                  TextField(
+                    controller: _nameCtrl,
+                    onChanged: _onNameChanged,
+                    decoration: InputDecoration(
+                      hintText: '약 이름 검색 또는 직접 입력',
+                      filled: true,
+                      fillColor: AppTheme.surface,
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _nameCtrl.text.isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: () {
+                                _searchDebounce?.cancel();
+                                _nameCtrl.clear();
+                                setState(() { _searchResults = []; _searching = false; });
+                              },
+                              icon: const Icon(Icons.close),
+                            ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
+                  if (_searching)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  if (_searchResults.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _searchResults.length,
+                        separatorBuilder: (_, __) =>
+                            Divider(height: 1, color: Colors.grey.shade200),
+                        itemBuilder: (_, i) {
+                          final med = _searchResults[i];
+                          return ListTile(
+                            dense: true,
+                            title: Text((med['name'] ?? '').toString(),
+                                style: const TextStyle(fontSize: 14)),
+                            onTap: () => _selectName(med),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   _sectionTitle('1회 복용량'),
                   TextField(

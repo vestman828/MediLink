@@ -321,7 +321,7 @@ async function replaceSchedules(req, res) {
     if (req.user.role !== 'guardian') {
       return res
         .status(403)
-        .json({ success: false, message: '蹂댄샇?먮쭔 蹂듭빟 ?쒓컙???ㅼ젙?????덉뒿?덈떎.' });
+        .json({ success: false, message: '보호자만 복약 시간을 수정할 수 있습니다.' });
     }
 
     const patientMedicineId = Number(req.params.patient_medicine_id);
@@ -330,7 +330,7 @@ async function replaceSchedules(req, res) {
     if (!Array.isArray(schedules)) {
       return res
         .status(400)
-        .json({ success: false, message: 'schedules 諛곗뿴???꾩슂?⑸땲??' });
+        .json({ success: false, message: 'schedules 배열이 필요합니다.' });
     }
 
     const invalidMessage = validateSchedules(schedules);
@@ -352,42 +352,74 @@ async function replaceSchedules(req, res) {
     try {
       await conn.beginTransaction();
 
+      // 복용량 업데이트 (dose만 바뀐 경우도 스케줄 기록은 건드리지 않음)
       if (dose) {
         await conn.query(
-          `UPDATE patient_medicines
-           SET dose = ?
-           WHERE patient_medicine_id = ?`,
+          `UPDATE patient_medicines SET dose = ? WHERE patient_medicine_id = ?`,
           [dose, patientMedicineId]
         );
       }
 
+      // 기존 스케줄 조회
       const [existing] = await conn.query(
-        `SELECT schedule_id
+        `SELECT schedule_id, day_of_week, time_slot, scheduled_time
          FROM schedules
          WHERE patient_medicine_id = ?`,
         [patientMedicineId]
       );
-      const ids = existing.map((s) => s.schedule_id);
-      if (ids.length > 0) {
-        await conn.query(`DELETE FROM intake_logs WHERE schedule_id IN (?)`, [
-          ids,
-        ]);
+
+      // 기존 스케줄을 key→schedule_id 맵으로 구성
+      const existingMap = new Map();
+      for (const s of existing) {
+        const key = `${s.day_of_week}_${s.scheduled_time}_${s.time_slot}`;
+        existingMap.set(key, s.schedule_id);
+      }
+
+      // 새 스케줄 key 집합
+      const newKeySet = new Set();
+      for (const s of schedules) {
+        const key = `${s.day_of_week}_${s.scheduled_time}_${s.time_slot}`;
+        newKeySet.add(key);
+      }
+
+      // 삭제할 스케줄: 기존에 있지만 새 목록에 없는 것
+      const toDeleteIds = [];
+      for (const [key, scheduleId] of existingMap) {
+        if (!newKeySet.has(key)) {
+          toDeleteIds.push(scheduleId);
+        }
+      }
+
+      if (toDeleteIds.length > 0) {
+        // 오늘 이후 복약 기록만 삭제 (과거 기록은 보존)
+        const kstToday = getKstDateString();
         await conn.query(
-          `DELETE FROM schedules WHERE patient_medicine_id = ?`,
-          [patientMedicineId]
+          `DELETE FROM intake_logs
+           WHERE schedule_id IN (?)
+             AND DATE(DATE_ADD(taken_at, INTERVAL 9 HOUR)) >= ?`,
+          [toDeleteIds, kstToday]
+        );
+        await conn.query(
+          `DELETE FROM schedules WHERE schedule_id IN (?)`,
+          [toDeleteIds]
         );
       }
 
+      // 추가할 스케줄: 새 목록에 있지만 기존에 없는 것
       for (const s of schedules) {
-        await conn.query(
-          `INSERT INTO schedules (patient_medicine_id, day_of_week, time_slot, scheduled_time)
-           VALUES (?, ?, ?, ?)`,
-          [patientMedicineId, s.day_of_week, s.time_slot, s.scheduled_time]
-        );
+        const key = `${s.day_of_week}_${s.scheduled_time}_${s.time_slot}`;
+        if (!existingMap.has(key)) {
+          await conn.query(
+            `INSERT INTO schedules (patient_medicine_id, day_of_week, time_slot, scheduled_time)
+             VALUES (?, ?, ?, ?)`,
+            [patientMedicineId, s.day_of_week, s.time_slot, s.scheduled_time]
+          );
+        }
+        // 변경 없는 스케줄은 그대로 유지 (intake_logs 보존)
       }
 
       await conn.commit();
-      return res.json({ success: true, message: '?ㅼ?以꾩씠 ?섏젙?섏뿀?듬땲??' });
+      return res.json({ success: true, message: '스케줄이 수정되었습니다.' });
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -396,7 +428,7 @@ async function replaceSchedules(req, res) {
     }
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ success: false, message: '?쒕쾭 ?ㅻ쪟' });
+    return res.status(500).json({ success: false, message: '서버 오류' });
   }
 }
 

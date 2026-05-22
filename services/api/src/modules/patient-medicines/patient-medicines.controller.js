@@ -258,10 +258,63 @@ async function deletePatientMedicine(req, res) {
   }
 }
 
+// 약 이름 변경: medicine_id를 새 약으로 교체 (없으면 새로 생성)
+async function renameMedicine(req, res) {
+  try {
+    if (req.user.role !== 'guardian') {
+      return res
+        .status(403)
+        .json({ success: false, message: '보호자만 약 이름을 변경할 수 있습니다.' });
+    }
+
+    const patientMedicineId = Number(req.params.patient_medicine_id);
+    const { medicine_name } = req.body;
+
+    if (!medicine_name || !medicine_name.trim()) {
+      return res.status(400).json({ success: false, message: '약 이름이 필요합니다.' });
+    }
+
+    const access = await ensureUserCanManagePatientMedicine(req.user, patientMedicineId);
+    if (!access.ok) {
+      return res.status(access.status).json({ success: false, message: access.message });
+    }
+
+    const name = medicine_name.trim();
+
+    // 이미 동일한 이름의 약이 있으면 재사용, 없으면 새로 생성
+    const [existing] = await pool.query(
+      `SELECT medicine_id FROM medicines WHERE name = ? LIMIT 1`,
+      [name]
+    );
+
+    let medicineId;
+    if (existing.length > 0) {
+      medicineId = existing[0].medicine_id;
+    } else {
+      const [result] = await pool.query(
+        `INSERT INTO medicines (name, unit) VALUES (?, '정')`,
+        [name]
+      );
+      medicineId = result.insertId;
+    }
+
+    await pool.query(
+      `UPDATE patient_medicines SET medicine_id = ? WHERE patient_medicine_id = ?`,
+      [medicineId, patientMedicineId]
+    );
+
+    return res.json({ success: true, message: '약 이름이 변경되었습니다.', medicine_id: medicineId });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: '서버 오류' });
+  }
+}
+
 module.exports = {
   createPatientMedicine,
   getPatientMedicines,
   reactivatePatientMedicine,
   deactivatePatientMedicine,
   deletePatientMedicine,
+  renameMedicine,
 };

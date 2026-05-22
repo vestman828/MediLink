@@ -7,6 +7,9 @@ import 'notification_service.dart';
 class FcmService {
   static final _messaging = FirebaseMessaging.instance;
 
+  // 가족 연동 요청 FCM 수신 시 호출할 콜백 (PatientHomeScreenState에서 등록)
+  static VoidCallback? onFamilyRequest;
+
   static Future<void> init() async {
     // 알림 권한 요청
     await _messaging.requestPermission(
@@ -17,6 +20,11 @@ class FcmService {
 
     // 포그라운드 메시지 수신
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      // 가족 연동 요청 데이터 메시지
+      if (message.data['type'] == 'family_request') {
+        onFamilyRequest?.call();
+        return;
+      }
       final title = message.notification?.title ?? '';
       final body = message.notification?.body ?? '';
       if (title.isNotEmpty) {
@@ -25,6 +33,13 @@ class FcmService {
           title: title,
           body: body,
         );
+      }
+    });
+
+    // 백그라운드 상태에서 알림 탭해서 앱 열었을 때
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (message.data['type'] == 'family_request') {
+        onFamilyRequest?.call();
       }
     });
   }

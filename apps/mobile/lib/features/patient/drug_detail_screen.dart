@@ -99,7 +99,7 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    _buildSection('약 설명', _detail!['efcy'] as String?),
+                    ..._buildEfcySections(_detail!['efcy'] as String?),
                     const SizedBox(height: 20),
                     Text(
                       '※ 본 정보는 식품의약품안전처 e약은요 서비스 기반입니다.',
@@ -110,6 +110,27 @@ class _DrugDetailScreenState extends State<DrugDetailScreen> {
                   ],
                 ),
     );
+  }
+
+  // efcy 필드를 [제목] 본문 패턴으로 파싱해서 섹션 카드 목록으로 반환
+  List<Widget> _buildEfcySections(String? efcy) {
+    if (efcy == null || efcy.trim().isEmpty) return [];
+
+    // '[제목] 본문' 패턴 파싱
+    final pattern = RegExp(r'\[([^\]]+)\]([^\[]*)', dotAll: true);
+    final matches = pattern.allMatches(efcy);
+
+    if (matches.isEmpty) {
+      // 괄호 없으면 단일 카드
+      return [_buildSection('약 설명', efcy)];
+    }
+
+    return matches.map((m) {
+      final sectionTitle = m.group(1)!.trim();
+      final sectionBody = m.group(2)!.trim();
+      if (sectionBody.isEmpty) return const SizedBox.shrink();
+      return _buildSection(sectionTitle, sectionBody);
+    }).toList();
   }
 
   Widget _buildSection(String title, String? content, {Color? color, Color? borderColor}) {
