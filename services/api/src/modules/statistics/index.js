@@ -1,2 +1,2 @@
 // statistics module entry
-export {};
+// stub

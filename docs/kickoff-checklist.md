@@ -1,4 +1,4 @@
-# Kickoff Checklist
+﻿# Kickoff Checklist
 
 - [ ] GitHub repository created
 - [ ] Branch protection for main
