@@ -40,6 +40,22 @@ class PatientHomeScreenState extends State<PatientHomeScreen>
 
   DateTime _nowKst() => DateTime.now().toUtc().add(const Duration(hours: 9));
 
+  // 00:00~01:59 KST → 어제 날짜(전날 취침 유예 시간대)
+  // 02:00 이후 → 오늘 날짜
+  DateTime _scheduleDate() {
+    final now = _nowKst();
+    if (now.hour < 2) {
+      return now.subtract(const Duration(days: 1));
+    }
+    return now;
+  }
+
+  // 현재 시각이 유예 시간대인지 (00:00~01:59 + 22:00 이후 스케줄)
+  bool _isGracePeriod(int schedMin) {
+    final hour = _nowKst().hour;
+    return hour < 2 && schedMin >= 22 * 60;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -119,7 +135,7 @@ class PatientHomeScreenState extends State<PatientHomeScreen>
     if (_userId == null || _token == null) return;
 
     try {
-      final today = DateFormat('yyyy-MM-dd').format(_nowKst());
+      final today = DateFormat('yyyy-MM-dd').format(_scheduleDate());
       final res = await ApiClient.get(
         '/schedules/today',
         token: _token,
@@ -710,10 +726,13 @@ class PatientHomeScreenState extends State<PatientHomeScreen>
   }
 
   // scheduled_time이 아직 지나지 않았으면 true (복약 버튼 비활성화용)
+  // 예외: 00:00~01:59 + 22:00 이후 스케줄 → 유예 시간대이므로 활성화
   bool _isBeforeScheduledTime(dynamic schedule) {
-    final nowMin = _nowKst().hour * 60 + _nowKst().minute;
     final schedMin = _parseTimeToMinutes(schedule['scheduled_time'] as String?);
     if (schedMin == null) return false;
+    // 새벽 유예 시간대: 전날 취침 스케줄이므로 이미 시간이 지남
+    if (_isGracePeriod(schedMin)) return false;
+    final nowMin = _nowKst().hour * 60 + _nowKst().minute;
     return nowMin < schedMin;
   }
 
