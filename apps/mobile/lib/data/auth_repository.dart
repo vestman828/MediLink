@@ -97,7 +97,12 @@ class AuthRepository {
   }
 
   Future<void> logout({required String token}) async {
-    await ApiClient.post('/auth/logout', {}, token: token);
+    await ApiClient.post(
+      '/auth/logout',
+      {},
+      token: token,
+      timeout: const Duration(seconds: 5),
+    );
   }
 
   Future<bool> phoneExists(String phone) async {

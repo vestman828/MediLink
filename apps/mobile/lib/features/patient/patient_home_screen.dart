@@ -5,11 +5,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/fcm_service.dart';
+import '../../core/logout_service.dart';
 import '../../core/notification_service.dart';
 import '../../core/storage.dart';
 import '../../core/theme.dart';
 import '../../data/api_client.dart';
-import '../../data/auth_repository.dart';
 import 'daily_note_screen.dart';
 import 'family_request_screen.dart';
 
@@ -22,8 +22,6 @@ class PatientHomeScreen extends StatefulWidget {
 
 class PatientHomeScreenState extends State<PatientHomeScreen>
     with WidgetsBindingObserver {
-  final _authRepo = AuthRepository();
-
   String? _name;
   int? _userId;
   String? _token;
@@ -263,17 +261,9 @@ class PatientHomeScreenState extends State<PatientHomeScreen>
   }
 
   Future<void> _logout() async {
-    try {
-      if (_token != null) {
-        await _authRepo.logout(token: _token!);
-      }
-    } catch (_) {
-      // ignore and continue local logout
-    }
-
-    await NotificationService.cancelAll();
-    await Storage.clear();
-    if (mounted) Navigator.pushReplacementNamed(context, '/login');
+    await LogoutService.logout(token: _token, cancelNotifications: true);
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
   }
 
   int get _takenCount => _schedules.where((s) => s['log_id'] != null).length;

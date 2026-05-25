@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../core/logout_service.dart';
 import '../../core/theme.dart';
 import '../../core/storage.dart';
 import '../../data/api_client.dart';
-import '../../data/auth_repository.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -12,8 +12,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _authRepo = AuthRepository();
-
   String? _token;
   String _name = '';
   String _phone = '';
@@ -234,16 +232,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirmed != true) return;
 
-    try {
-      if (_token != null) {
-        await _authRepo.logout(token: _token!);
-      }
-    } catch (_) {
-      // ignore and continue local logout
-    }
-
-    await Storage.clear();
-    if (mounted) Navigator.pushReplacementNamed(context, '/login');
+    await LogoutService.logout(
+      token: _token,
+      cancelNotifications: _role == 'patient',
+    );
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
   }
 
   @override

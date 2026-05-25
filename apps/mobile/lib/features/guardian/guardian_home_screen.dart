@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../core/logout_service.dart';
 import '../../core/theme.dart';
 import '../../core/storage.dart';
 import '../../data/api_client.dart';
-import '../../data/auth_repository.dart';
 import '../patient/medicine_list_screen.dart';
 
 class GuardianHomeScreen extends StatefulWidget {
@@ -14,7 +14,6 @@ class GuardianHomeScreen extends StatefulWidget {
 }
 
 class _GuardianHomeScreenState extends State<GuardianHomeScreen> {
-  final _authRepo = AuthRepository();
   String? _name;
   int? _userId;
   String? _token;
@@ -62,15 +61,9 @@ class _GuardianHomeScreenState extends State<GuardianHomeScreen> {
   }
 
   Future<void> _logout() async {
-    try {
-      if (_token != null) {
-        await _authRepo.logout(token: _token!);
-      }
-    } catch (_) {
-      // ignore and continue local logout
-    }
-    await Storage.clear();
-    if (mounted) Navigator.pushReplacementNamed(context, '/login');
+    await LogoutService.logout(token: _token);
+    if (!mounted) return;
+    Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
   }
 
   String _statusLabel(String status) {
