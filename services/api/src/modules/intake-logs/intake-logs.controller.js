@@ -1,5 +1,13 @@
 ﻿const pool = require('../../config/db');
 
+const {
+  ImageStorageError,
+  deleteLocalFile,
+  deleteUploadedImageByUrl,
+  saveImageBuffer,
+  savePhotoInput,
+} = require('../../utils/image-storage');
+
 function getKstDateString(base = new Date()) {
   return new Date(base.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
@@ -22,15 +30,40 @@ function parseTimeToMinutes(timeString) {
   return hour * 60 + minute;
 }
 
-async function createIntakeLog(req, res) {
-  try {
-    const { schedule_id, patient_id, auth_method = 'button', photo_url } = req.body;
+function normalizeAuthMethod(authMethod) {
+  const value = authMethod || 'button';
+  if (!['button', 'photo'].includes(value)) {
+    return null;
+  }
+  return value;
+}
 
-    if (!schedule_id || !patient_id) {
+function handleCreateError(err, res) {
+  if (err instanceof ImageStorageError) {
+    return res.status(err.statusCode).json({ success: false, message: err.message });
+  }
+
+  console.error(err);
+  return res.status(500).json({ success: false, message: '서버 오류' });
+}
+
+async function createIntakeLogRecord(req, res, payload) {
+  let savedPhoto = { url: null, filePath: null };
+
+  try {
+    const scheduleId = Number(payload.schedule_id);
+    const patientId = Number(payload.patient_id);
+    const authMethod = normalizeAuthMethod(payload.auth_method);
+
+    if (!scheduleId || !patientId) {
       return res.status(400).json({ success: false, message: '필수값이 누락되었습니다.' });
     }
 
-    if (req.user.role !== 'patient' || req.user.user_id !== Number(patient_id)) {
+    if (!authMethod) {
+      return res.status(400).json({ success: false, message: '인증 방식이 올바르지 않습니다.' });
+    }
+
+    if (req.user.role !== 'patient' || req.user.user_id !== patientId) {
       return res.status(403).json({ success: false, message: '본인 복약만 체크할 수 있습니다.' });
     }
 
@@ -42,7 +75,7 @@ async function createIntakeLog(req, res) {
          AND pm.patient_id = ?
          AND pm.is_active = 1
        LIMIT 1`,
-      [schedule_id, patient_id]
+      [scheduleId, patientId]
     );
 
     if (scheduleRows.length === 0) {
@@ -83,11 +116,27 @@ async function createIntakeLog(req, res) {
        WHERE schedule_id = ?
          AND patient_id = ?
          AND DATE(DATE_ADD(taken_at, INTERVAL 9 HOUR)) = ?`,
-      [schedule_id, patient_id, kstDate]
+      [scheduleId, patientId, kstDate]
     );
 
     if (existing.length > 0) {
       return res.status(409).json({ success: false, message: '오늘 이미 복약 체크했습니다.' });
+    }
+
+    const photoContext = { patientId, scheduleId };
+    if (payload.imageBuffer) {
+      savedPhoto = await saveImageBuffer(
+        payload.imageBuffer,
+        payload.contentType,
+        req,
+        photoContext
+      );
+    } else if (payload.photoInput) {
+      savedPhoto = await savePhotoInput(payload.photoInput, req, photoContext);
+    }
+
+    if (authMethod === 'photo' && !savedPhoto.url) {
+      return res.status(400).json({ success: false, message: '사진 인증에는 이미지가 필요합니다.' });
     }
 
     const conn = await pool.getConnection();
@@ -97,27 +146,53 @@ async function createIntakeLog(req, res) {
       const [result] = await conn.query(
         `INSERT INTO intake_logs (schedule_id, patient_id, status, auth_method, photo_url)
          VALUES (?, ?, 'taken', ?, ?)`,
-        [schedule_id, patient_id, auth_method, photo_url || null]
+        [scheduleId, patientId, authMethod, savedPhoto.url]
       );
 
       await conn.query(
         `INSERT INTO points_badges (user_id, points, reason)
          VALUES (?, 100, '복약 체크')`,
-        [patient_id]
+        [patientId]
       );
 
       await conn.commit();
-      return res.status(201).json({ success: true, log_id: result.insertId, points_earned: 100 });
+      return res.status(201).json({
+        success: true,
+        log_id: result.insertId,
+        points_earned: 100,
+        photo_url: savedPhoto.url,
+      });
     } catch (err) {
       await conn.rollback();
+      await deleteLocalFile(savedPhoto.filePath);
       throw err;
     } finally {
       conn.release();
     }
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ success: false, message: '서버 오류' });
+    await deleteLocalFile(savedPhoto.filePath);
+    return handleCreateError(err, res);
   }
+}
+
+async function createIntakeLog(req, res) {
+  const { schedule_id, patient_id, auth_method = 'button', photo_url, photo_base64 } = req.body;
+  return createIntakeLogRecord(req, res, {
+    schedule_id,
+    patient_id,
+    auth_method,
+    photoInput: photo_base64 || photo_url,
+  });
+}
+
+async function createPhotoIntakeLog(req, res) {
+  return createIntakeLogRecord(req, res, {
+    schedule_id: req.query.schedule_id,
+    patient_id: req.query.patient_id,
+    auth_method: 'photo',
+    imageBuffer: req.body,
+    contentType: req.get('content-type'),
+  });
 }
 
 async function getIntakeHistory(req, res) {
@@ -157,7 +232,7 @@ async function deleteIntakeLog(req, res) {
     const { log_id } = req.params;
 
     const [logs] = await pool.query(
-      `SELECT log_id, patient_id
+      `SELECT log_id, patient_id, photo_url
        FROM intake_logs
        WHERE log_id = ?`,
       [log_id]
@@ -167,7 +242,7 @@ async function deleteIntakeLog(req, res) {
       return res.status(404).json({ success: false, message: '기록을 찾을 수 없습니다.' });
     }
 
-    const { patient_id } = logs[0];
+    const { patient_id, photo_url } = logs[0];
     if (req.user.role !== 'patient' || req.user.user_id !== Number(patient_id)) {
       return res.status(403).json({ success: false, message: '본인 기록만 취소할 수 있습니다.' });
     }
@@ -184,6 +259,7 @@ async function deleteIntakeLog(req, res) {
       );
 
       await conn.commit();
+      await deleteUploadedImageByUrl(photo_url);
       return res.json({ success: true, message: '복약 기록이 취소되었습니다.' });
     } catch (err) {
       await conn.rollback();
@@ -241,4 +317,10 @@ async function getPatientIntakeHistory(req, res) {
   }
 }
 
-module.exports = { createIntakeLog, getIntakeHistory, deleteIntakeLog, getPatientIntakeHistory };
+module.exports = {
+  createIntakeLog,
+  createPhotoIntakeLog,
+  getIntakeHistory,
+  deleteIntakeLog,
+  getPatientIntakeHistory,
+};

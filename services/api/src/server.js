@@ -7,6 +7,7 @@ const app = require('./app');
 const pool = require('./config/db');
 const { sendFcmNotification } = require('./config/firebase');
 const { runMedicineSyncIfDue } = require('./modules/medicines/medicine-sync.service');
+const { deleteUploadedImageByUrl } = require('./utils/image-storage');
 
 const PORT = process.env.PORT || 4000;
 const HTTPS_ENABLED =
@@ -270,10 +271,23 @@ function startScheduler() {
 
   const runIntakeLogCleanup = async () => {
     try {
-      const [result] = await pool.query(
-        `DELETE FROM intake_logs
+      const [expiredLogs] = await pool.query(
+        `SELECT log_id, photo_url
+         FROM intake_logs
          WHERE DATE(DATE_ADD(taken_at, INTERVAL 9 HOUR)) <
                DATE_SUB(DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 9 HOUR)), INTERVAL ${INTAKE_LOG_RETENTION_DAYS} DAY)`
+      );
+
+      if (expiredLogs.length === 0) return;
+
+      const [result] = await pool.query(
+        `DELETE FROM intake_logs
+         WHERE log_id IN (?)`,
+        [expiredLogs.map((log) => log.log_id)]
+      );
+
+      await Promise.all(
+        expiredLogs.map((log) => deleteUploadedImageByUrl(log.photo_url))
       );
 
       if (result.affectedRows > 0) {

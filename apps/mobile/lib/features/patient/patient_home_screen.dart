@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -173,6 +172,13 @@ class PatientHomeScreenState extends State<PatientHomeScreen>
     }
   }
 
+  String _imageContentType(String path) {
+    final lowerPath = path.toLowerCase();
+    if (lowerPath.endsWith('.png')) return 'image/png';
+    if (lowerPath.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
   Future<void> _checkIntakeWithPhoto(int scheduleId) async {
     final picker = ImagePicker();
     final picked =
@@ -227,17 +233,16 @@ class PatientHomeScreenState extends State<PatientHomeScreen>
 
     try {
       final bytes = await File(picked.path).readAsBytes();
-      final base64Image = 'data:image/jpeg;base64,${base64Encode(bytes)}';
 
-      await ApiClient.post(
-        '/intake-logs',
-        {
-          'schedule_id': scheduleId,
-          'patient_id': _userId,
-          'auth_method': 'photo',
-          'photo_url': base64Image,
-        },
+      await ApiClient.postBytes(
+        '/intake-logs/photo',
+        bytes,
         token: _token,
+        contentType: _imageContentType(picked.path),
+        queryParams: {
+          'schedule_id': scheduleId.toString(),
+          'patient_id': _userId.toString(),
+        },
       );
 
       await _loadSchedules();

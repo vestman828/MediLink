@@ -1,4 +1,6 @@
 ﻿const pool = require('../../config/db');
+const { deleteUploadedImageByUrl } = require('../../utils/image-storage');
+
 const RESERVED_FIXED_TIMES = new Set(['08:00:00', '12:00:00', '18:00:00', '22:00:00']);
 const MAX_CUSTOM_TIMES_PER_DAY = 4;
 
@@ -348,6 +350,7 @@ async function replaceSchedules(req, res) {
         .json({ success: false, message: access.message });
     }
 
+    const deletedPhotoUrls = [];
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
@@ -393,6 +396,16 @@ async function replaceSchedules(req, res) {
       if (toDeleteIds.length > 0) {
         // 오늘 이후 복약 기록만 삭제 (과거 기록은 보존)
         const kstToday = getKstDateString();
+        const [logsToDelete] = await conn.query(
+          `SELECT photo_url
+           FROM intake_logs
+           WHERE schedule_id IN (?)
+             AND DATE(DATE_ADD(taken_at, INTERVAL 9 HOUR)) >= ?
+             AND photo_url IS NOT NULL`,
+          [toDeleteIds, kstToday]
+        );
+        deletedPhotoUrls.push(...logsToDelete.map((log) => log.photo_url));
+
         await conn.query(
           `DELETE FROM intake_logs
            WHERE schedule_id IN (?)
@@ -419,6 +432,7 @@ async function replaceSchedules(req, res) {
       }
 
       await conn.commit();
+      await Promise.all(deletedPhotoUrls.map(deleteUploadedImageByUrl));
       return res.json({ success: true, message: '스케줄이 수정되었습니다.' });
     } catch (err) {
       await conn.rollback();
@@ -438,5 +452,3 @@ module.exports = {
   getSchedulesByMedicine,
   replaceSchedules,
 };
-
-
