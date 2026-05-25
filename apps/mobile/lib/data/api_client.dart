@@ -17,7 +17,7 @@ class ApiClient {
   // Override with: --dart-define=MEDILINK_API_BASE_URL=https://your-host/api
   static const String _baseUrl = String.fromEnvironment(
     'MEDILINK_API_BASE_URL',
-    defaultValue: 'http://34.172.12.20:4000/api',
+    defaultValue: 'http://10.0.2.2:4000/api',
   );
 
   static const Duration _defaultTimeout = Duration(seconds: 20);
