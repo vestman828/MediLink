@@ -290,3 +290,18 @@ DRUG_API_KEY=your_drug_api_key_here
 | 푸시 알림 | Firebase Cloud Messaging (FCM) |
 | 약 정보 | 식품의약품안전처 e약은요 API |
 | HTTP 통신 | http 패키지 (Flutter), mysql2/promise (Node.js) |
+
+---
+
+## 👥 팀원 기여 내용
+
+| 이름 | 학번 | 담당 역할 |
+|------|------|----------|
+| 박은호 | 20221840 | 기획 총괄 / 발표 / Flutter UI 구현 (환자·보호자 모드 화면) |
+| 김민재 | 20221736 | Flutter 앱 개발 / 노인 모드·보호자 모드 UI / 사진 인증 인터페이스 |
+| 김현민 | 20241919 | 데이터베이스 설계 / MySQL 스키마·ERD / 핵심 SQL 쿼리 구현 |
+| 김우석 | 20211678 | 백엔드 API 개발 / FCM 알림 서버 구현 / JWT 인증 / DB 구축 |
+
+### GitHub 협업 방식
+- feature 브랜치 → main PR 방식: 기능별 독립 브랜치 운영 및 코드 리뷰 후 병합
+- Notion / KakaoTalk: 주 2회 정기 공유 및 실시간 이슈 트래킹
